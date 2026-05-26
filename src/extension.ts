@@ -6,7 +6,14 @@ interface SearchItem extends vscode.QuickPickItem {
     symbol?: vscode.SymbolInformation;
 }
 
-const out = vscode.window.createOutputChannel('Scoped Symbol Search');
+const BTN_TO_SYMBOLS: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon('symbol-class'),
+    tooltip: 'Switch to symbol search'
+};
+const BTN_TO_FILES: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon('file'),
+    tooltip: 'Switch to file search'
+};
 
 export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -22,12 +29,27 @@ async function search() {
     }
 
     const qp = vscode.window.createQuickPick<SearchItem>();
-    qp.placeholder = `Search in ${folder.name} — prefix # for symbols`;
     qp.matchOnDescription = true;
     qp.matchOnDetail = true;
 
+    let symbolMode = false;
     let fileItems: SearchItem[] = [];
+    let symbolDebounce: ReturnType<typeof setTimeout> | undefined;
+    let settingValue = false;
 
+    const folderName = folder.name;
+
+    function setMode(sym: boolean) {
+        symbolMode = sym;
+        qp.buttons = [sym ? BTN_TO_FILES : BTN_TO_SYMBOLS];
+        qp.placeholder = sym
+            ? `Search symbols in ${folderName}`
+            : `Search files in ${folderName} — type # to search symbols`;
+    }
+
+    setMode(false);
+
+    // Load files immediately
     qp.busy = true;
     vscode.workspace
         .findFiles(new vscode.RelativePattern(folder, '**/*'), '{**/node_modules/**,**/.git/**}', 2000)
@@ -37,29 +59,32 @@ async function search() {
                 detail: vscode.workspace.asRelativePath(uri, false),
                 uri
             }));
-            if (!qp.value.startsWith('#')) {
-                qp.items = fileItems;
-            }
+            if (!symbolMode) qp.items = fileItems;
             qp.busy = false;
         });
 
-    let symbolDebounce: ReturnType<typeof setTimeout> | undefined;
-
     qp.onDidChangeValue(value => {
+        if (settingValue) return;
+
+        if (!symbolMode && value === '#') {
+            settingValue = true;
+            setMode(true);
+            qp.value = '';
+            qp.items = [];
+            settingValue = false;
+            return;
+        }
+
         if (symbolDebounce) clearTimeout(symbolDebounce);
 
-        if (value.startsWith('#')) {
-            const query = value.slice(1);
+        if (symbolMode) {
             qp.busy = true;
             symbolDebounce = setTimeout(async () => {
                 const symbols =
                     (await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
                         'vscode.executeWorkspaceSymbolProvider',
-                        query
+                        value
                     )) ?? [];
-                out.appendLine(`query="${query}" total=${symbols.length} folder=${folder.uri.fsPath}`);
-                symbols.slice(0, 3).forEach(s => out.appendLine(`  ${s.location.uri.fsPath}`));
-                out.show(true);
                 qp.items = symbols
                     .filter(s => s.location.uri.fsPath.startsWith(folder.uri.fsPath))
                     .map(s => ({
@@ -73,6 +98,14 @@ async function search() {
         } else {
             qp.items = fileItems;
         }
+    });
+
+    qp.onDidTriggerButton(() => {
+        settingValue = true;
+        setMode(!symbolMode);
+        qp.value = '';
+        qp.items = symbolMode ? [] : fileItems;
+        settingValue = false;
     });
 
     qp.onDidAccept(async () => {
@@ -99,9 +132,7 @@ async function search() {
 
 function getActiveFolder(): vscode.WorkspaceFolder | undefined {
     const uri = vscode.window.activeTextEditor?.document.uri;
-    if (uri) {
-        return vscode.workspace.getWorkspaceFolder(uri);
-    }
+    if (uri) return vscode.workspace.getWorkspaceFolder(uri);
     return vscode.workspace.workspaceFolders?.[0];
 }
 
