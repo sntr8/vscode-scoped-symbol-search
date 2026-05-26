@@ -55,6 +55,8 @@ async function search() {
                         'vscode.executeWorkspaceSymbolProvider',
                         query
                     )) ?? [];
+                console.log(`[scoped-search] query="${query}" total=${symbols.length} folder=${folder.uri.fsPath}`);
+                symbols.slice(0, 3).forEach(s => console.log(`  ${s.location.uri.fsPath}`));
                 qp.items = symbols
                     .filter(s => s.location.uri.fsPath.startsWith(folder.uri.fsPath))
                     .map(s => ({
