@@ -6,6 +6,8 @@ interface SearchItem extends vscode.QuickPickItem {
     symbol?: vscode.SymbolInformation;
 }
 
+const out = vscode.window.createOutputChannel('Scoped Symbol Search');
+
 export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('scopedSymbolSearch.search', search)
@@ -55,8 +57,9 @@ async function search() {
                         'vscode.executeWorkspaceSymbolProvider',
                         query
                     )) ?? [];
-                console.log(`[scoped-search] query="${query}" total=${symbols.length} folder=${folder.uri.fsPath}`);
-                symbols.slice(0, 3).forEach(s => console.log(`  ${s.location.uri.fsPath}`));
+                out.appendLine(`query="${query}" total=${symbols.length} folder=${folder.uri.fsPath}`);
+                symbols.slice(0, 3).forEach(s => out.appendLine(`  ${s.location.uri.fsPath}`));
+                out.show(true);
                 qp.items = symbols
                     .filter(s => s.location.uri.fsPath.startsWith(folder.uri.fsPath))
                     .map(s => ({
