@@ -28,92 +28,126 @@ async function search() {
         return;
     }
 
-    const qp = vscode.window.createQuickPick<SearchItem>();
-    qp.matchOnDescription = true;
-    qp.matchOnDetail = true;
-
-    let symbolMode = false;
+    // Shared file cache across QP instances within one search session.
     let fileItems: SearchItem[] = [];
-    let symbolDebounce: ReturnType<typeof setTimeout> | undefined;
-    let settingValue = false;
-
-    const folderName = folder.name;
-
-    function setMode(sym: boolean) {
-        symbolMode = sym;
-        qp.buttons = [sym ? BTN_TO_FILES : BTN_TO_SYMBOLS];
-        qp.placeholder = sym
-            ? `Search symbols in ${folderName}`
-            : `Search files in ${folderName} — type # to search symbols`;
-    }
-
-    setMode(false);
-
-    // Load files immediately
-    qp.busy = true;
-    vscode.workspace
+    let fileItemsReady = false;
+    const fileLoad = vscode.workspace
         .findFiles(new vscode.RelativePattern(folder, '**/*'), '{**/node_modules/**,**/.git/**}', 2000)
         .then(uris => {
             fileItems = uris.map(uri => ({
                 label: path.basename(uri.fsPath),
                 detail: vscode.workspace.asRelativePath(uri, false),
-                uri
+                uri,
             }));
-            if (!symbolMode) qp.items = fileItems;
-            qp.busy = false;
+            fileItemsReady = true;
         });
 
-    qp.onDidChangeValue(value => {
-        if (settingValue) return;
+    openFileSearch();
 
-        if (!symbolMode && value === '#') {
-            settingValue = true;
-            setMode(true);
-            qp.value = '';
-            qp.items = [];
-            settingValue = false;
-            return;
+    // ── File mode ────────────────────────────────────────────────────────────
+
+    function openFileSearch() {
+        const qp = vscode.window.createQuickPick<SearchItem>();
+        qp.matchOnDescription = true;
+        qp.matchOnDetail = true;
+        qp.placeholder = `Search files in ${folder!.name} — type # to search symbols`;
+        qp.buttons = [BTN_TO_SYMBOLS];
+
+        if (fileItemsReady) {
+            qp.items = fileItems;
+        } else {
+            qp.busy = true;
+            fileLoad.then(() => {
+                qp.items = fileItems;
+                qp.busy = false;
+            });
         }
 
-        if (symbolDebounce) clearTimeout(symbolDebounce);
+        let switchingToSymbol = false;
 
-        if (symbolMode) {
+        qp.onDidChangeValue(value => {
+            if (value === '#') {
+                switchingToSymbol = true;
+                qp.hide();
+            }
+            // else: built-in QuickPick filter handles file search
+        });
+
+        qp.onDidTriggerButton(() => {
+            switchingToSymbol = true;
+            qp.hide();
+        });
+
+        qp.onDidAccept(async () => {
+            const item = qp.selectedItems[0];
+            if (!item?.uri) return;
+            qp.dispose();
+            await vscode.window.showTextDocument(item.uri);
+        });
+
+        qp.onDidHide(() => {
+            qp.dispose();
+            if (switchingToSymbol) openSymbolSearch();
+        });
+
+        qp.show();
+    }
+
+    // ── Symbol mode ───────────────────────────────────────────────────────────
+
+    function openSymbolSearch() {
+        const qp = vscode.window.createQuickPick<SearchItem>();
+        qp.matchOnDescription = true;
+        qp.matchOnDetail = true;
+        qp.placeholder = `Search symbols in ${folder!.name}`;
+        qp.buttons = [BTN_TO_FILES];
+
+        let symbolDebounce: ReturnType<typeof setTimeout> | undefined;
+        let switchingToFile = false;
+
+        function searchSymbols(query: string) {
+            if (symbolDebounce) clearTimeout(symbolDebounce);
             qp.busy = true;
             symbolDebounce = setTimeout(async () => {
                 const symbols =
                     (await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
                         'vscode.executeWorkspaceSymbolProvider',
-                        value
+                        query
                     )) ?? [];
                 qp.items = symbols
-                    .filter(s => s.location.uri.fsPath.startsWith(folder.uri.fsPath))
+                    .filter(s => s.location.uri.fsPath.startsWith(folder!.uri.fsPath))
                     .map(s => ({
                         label: `$(symbol-${kindIcon(s.kind)}) ${s.name}`,
                         description: s.containerName,
                         detail: vscode.workspace.asRelativePath(s.location.uri, false),
-                        symbol: s
+                        symbol: s,
                     }));
                 qp.busy = false;
             }, 200);
-        } else {
-            qp.items = fileItems;
         }
-    });
 
-    qp.onDidTriggerButton(() => {
-        settingValue = true;
-        setMode(!symbolMode);
-        qp.value = '';
-        qp.items = symbolMode ? [] : fileItems;
-        settingValue = false;
-    });
+        // Trigger an initial empty search so symbols appear immediately on open.
+        searchSymbols('');
 
-    qp.onDidAccept(async () => {
-        const item = qp.selectedItems[0];
-        if (!item) return;
-        qp.hide();
+        qp.onDidChangeValue(value => {
+            if (value === '') {
+                // User backspaced past the last character — return to file mode.
+                switchingToFile = true;
+                qp.hide();
+                return;
+            }
+            searchSymbols(value);
+        });
 
-        if (item.symbol) {
+        qp.onDidTriggerButton(() => {
+            switchingToFile = true;
+            qp.hide();
+        });
+
+        qp.onDidAccept(async () => {
+            const item = qp.selectedItems[0];
+            if (!item?.symbol) return;
+            qp.dispose();
             const doc = await vscode.workspace.openTextDocument(item.symbol.location.uri);
             const editor = await vscode.window.showTextDocument(doc);
             editor.selection = new vscode.Selection(
@@ -121,13 +155,16 @@ async function search() {
                 item.symbol.location.range.start
             );
             editor.revealRange(item.symbol.location.range, vscode.TextEditorRevealType.InCenter);
-        } else if (item.uri) {
-            await vscode.window.showTextDocument(item.uri);
-        }
-    });
+        });
 
-    qp.onDidHide(() => qp.dispose());
-    qp.show();
+        qp.onDidHide(() => {
+            if (symbolDebounce) clearTimeout(symbolDebounce);
+            qp.dispose();
+            if (switchingToFile) openFileSearch();
+        });
+
+        qp.show();
+    }
 }
 
 function getActiveFolder(): vscode.WorkspaceFolder | undefined {
