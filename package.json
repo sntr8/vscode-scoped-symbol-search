@@ -4,6 +4,7 @@
     "description": "Search files and symbols scoped to the active workspace folder, useful in multi-root workspaces where global search returns too many results from unrelated folders",
     "version": "0.0.2",
     "publisher": "sntr",
+    "icon": "icon.png",
     "repository": {
         "type": "git",
         "url": "https://github.com/sntr8/vscode-scoped-search"
