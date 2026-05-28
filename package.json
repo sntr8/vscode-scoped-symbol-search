@@ -1,7 +1,7 @@
 {
-    "name": "scoped-symbol-search",
+    "name": "scoped-search",
     "displayName": "Scoped Symbol Search",
-    "description": "VS Code extension for file and symbol search scoped to the current workspace folder",
+    "description": "Search files and symbols scoped to the active workspace folder, useful in multi-root workspaces where global search returns too many results from unrelated folders",
     "version": "0.0.1",
     "publisher": "sntr8",
     "repository": {
