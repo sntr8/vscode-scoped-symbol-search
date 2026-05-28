@@ -17,7 +17,7 @@ const BTN_TO_FILES: vscode.QuickInputButton = {
 
 export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
-        vscode.commands.registerCommand('scopedSymbolSearch.search', search)
+        vscode.commands.registerCommand('scopedSearch.search', search)
     );
 }
 
@@ -50,7 +50,7 @@ async function search() {
         const qp = vscode.window.createQuickPick<SearchItem>();
         qp.matchOnDescription = true;
         qp.matchOnDetail = true;
-        qp.placeholder = `Search files in ${folder!.name} — type # to search symbols`;
+        qp.placeholder = `Search files in ${folder!.name} (type # to search symbols)`;
         qp.buttons = [BTN_TO_SYMBOLS];
 
         if (fileItemsReady) {

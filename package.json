@@ -1,8 +1,8 @@
 {
     "name": "scoped-search",
-    "displayName": "Scoped Symbol Search",
+    "displayName": "Scoped Search",
     "description": "Search files and symbols scoped to the active workspace folder, useful in multi-root workspaces where global search returns too many results from unrelated folders",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "publisher": "sntr",
     "repository": {
         "type": "git",
@@ -17,13 +17,13 @@
     "contributes": {
         "commands": [
             {
-                "command": "scopedSymbolSearch.search",
-                "title": "Scoped Symbol Search: Search in Current Folder"
+                "command": "scopedSearch.search",
+                "title": "Scoped Search: Search in Current Folder"
             }
         ],
         "keybindings": [
             {
-                "command": "scopedSymbolSearch.search",
+                "command": "scopedSearch.search",
                 "key": "ctrl+alt+t",
                 "mac": "cmd+alt+t"
             }
