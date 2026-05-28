@@ -5,6 +5,7 @@
     "version": "0.0.2",
     "publisher": "sntr",
     "icon": "icon.png",
+    "license": "MIT",
     "repository": {
         "type": "git",
         "url": "https://github.com/sntr8/vscode-scoped-search"
